@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.jboss.wildfly</groupId>
+    <artifactId>wildfly</artifactId>
+    <version>14.0.1.Final</version>
+    <name>JBoss Wildfly 10</name>
+    <description>Installiert den JBoss Wildfly 14.</description>
+
+    <parent>
+        <groupId>de.daikol</groupId>
+        <artifactId>corporate-pom</artifactId>
+        <version>1.0.2</version>
+    </parent>
+
+    <scm>
+        <connection>scm:svn:https://svn3.sliksvn.com/davidkowol_infra/JBossWildfly/trunk</connection>
+    </scm>
+
+    <properties>
+        <rpm.name>${project.artifactId}</rpm.name>
+        <rpm.version>${project.version}</rpm.version>
+
+        <rpm.group>wildfly</rpm.group>
+        <rpm.user>wildfly</rpm.user>
+        <rpm.gid>504</rpm.gid>
+        <rpm.uid>504</rpm.uid>
+        <rpm.home>/opt/${rpm.user}</rpm.home>
+    </properties>
+
+    <build>
+        <plugins>
+
+            <!-- Dieses Plugin erzeugt das RPM. -->
+            <!-- Hinweis: es kann nur auf solchen Systemen ausgeführt werden, die den RPM/RPMBuild installiert haben. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>rpm-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>rpm</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <mappings>
+                        <mapping>
+                            <directory>${rpm.home}</directory>
+                            <username>${rpm.user}</username>
+                            <groupname>${rpm.group}</groupname>
+                            <filemode>0730</filemode>
+                            <sources>
+                                <source>
+                                    <location>src/main/resources/wildfly-14.0.1.Final</location>
+                                </source>
+                            </sources>
+                        </mapping>
+
+                        <!-- a mapping to make a start as service possible -> service xxx start|stop|status -->
+                        <mapping>
+                            <directory>/etc/init.d</directory>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <directoryIncluded>false</directoryIncluded>
+                            <filemode>0744</filemode>
+                            <sources>
+                                <source>
+                                    <location>${project.build.directory}/classes/wildfly-14.0.1.Final/docs/contrib/scripts/init.d/wildfly-init-redhat.sh</location>
+                                    <destination>${rpm.name}</destination>
+                                </source>
+                            </sources>
+                        </mapping>
+
+                        <mapping>
+                            <directory>/etc/default</directory>
+                            <username>root</username>
+                            <groupname>root</groupname>
+                            <directoryIncluded>false</directoryIncluded>
+                            <sources>
+                                <source>
+                                    <location>${project.build.directory}/classes/wildfly-14.0.1.Final/docs/contrib/scripts/init.d/wildfly.conf</location>
+                                    <destination>${rpm.name}</destination>
+                                </source>
+                            </sources>
+                        </mapping>
+
+                    </mappings>
+                    <preinstallScriptlet>
+                        <script>
+                            <![CDATA[
+    if [ "$1" = "1" ]; then
+        echo "Beginne mit der Installation von %{name} %{version}-%{release}."
+        echo ""
+
+        echo "Prüfe ob die Gruppe '${rpm.group}' bereits existiert."
+        cat /etc/group | cut -d":" -f1 | grep ${rpm.group} 2>&1 > /dev/null
+        if [ $? -eq 0 ]; then
+            echo "Die Gruppe '${rpm.group}' konnte gefunden werden und wird nicht erneut angelegt."
+        else
+            echo "Es existiert noch keine Gruppe '${rpm.group}'... Diese wird nun angelegt."
+
+            groupadd -g ${rpm.gid} -r ${rpm.group} 2>&1 > /dev/null
+            if [ $? -ne 0 ]; then
+                echo "Konnte die Gruppe '${rpm.group}' nicht anlegen... breche ab."
+            fi
+        fi
+        echo ""
+
+        echo "Prüfe ob der User '${rpm.user}' bereits existiert."
+        cat /etc/passwd | cut -d":" -f1 | grep ${rpm.user} 2>&1 > /dev/null
+        if [ $? -eq 0 ]; then
+            echo "Der User '${rpm.user}' konnte gefunden werden und wird nicht erneut angelegt."
+        else
+            echo "Es existiert noch kein User '${rpm.user}'... Dieser wird nun angelegt."
+
+            useradd -g ${rpm.gid} -u ${rpm.uid} -s /bin/bash -r ${rpm.user} 2>&1 > /dev/null
+            if [ $? -ne 0 ]; then
+                echo "Konnte den User '${rpm.user}' nicht anlegen... breche ab."
+            fi
+        fi
+        echo ""
+    fi
+
+    if [ "$1" = "2" ]; then
+        echo "Beginne mit dem Update von %{name} auf Version %{version}-%{release}."
+        echo ""
+        echo "Beende ${rpm.name} falls eine Instanz läuft."
+        ! pgrep -f "java.*-Dapplication\.name=${rpm.name}.*-Dapplication\.home=${rpm.home}" 2>&1 > /dev/null || service ${rpm.name} stop
+        echo ""
+    fi
+]]>
+                        </script>
+                    </preinstallScriptlet>
+                    <postinstallScriptlet>
+                        <script>
+                            <![CDATA[
+    if [ "$1" = "1" ]; then
+        echo "${rpm.name} wird als Service hinzugefügt."
+        systemctl enable ${rpm.name}
+        chkconfig --add ${rpm.name}
+        echo ""
+        echo "${rpm.name} wird gestartet."
+        service ${rpm.name} start
+
+        echo "Die Installation von %{name} %{version}-%{release} ist abgeschlossen."
+        echo ""
+    fi
+
+    if [ "$1" = "2" ]; then
+        echo "Das Update von %{name} auf Version %{version}-%{release} ist abgeschlossen."
+        echo ""
+    fi
+]]>
+                        </script>
+                    </postinstallScriptlet>
+
+                    <preremoveScriptlet>
+                        <script>
+                            <![CDATA[
+    if [ "$1" = "0" ]; then
+        echo "Beginne mit der Deinstallation von %{name} %{version}-%{release}."
+        echo ""
+        echo "Beende ${rpm.name} falls eine Instanz läuft."
+        ! pgrep -f "java.*-Dapplication\.name=${rpm.name}.*-Dapplication\.home=${rpm.home}" 2>&1 > /dev/null || service ${rpm.name} stop
+        echo ""
+        echo "${rpm.name} wird als Service entfernt."
+        chkconfig --del ${rpm.name}
+        systemctl disable ${rpm.name}
+        echo ""
+        echo "Entferne nun die Dateien der alten Version von %{name}."
+        echo ""
+    fi
+]]>
+                        </script>
+                    </preremoveScriptlet>
+                    <postremoveScriptlet>
+                        <script>
+                            <![CDATA[
+    if [ "$1" = "1" ]; then
+        echo "Das entfernen der alten Dateien von %{name} ist abgeschlossen."
+        echo ""
+    else
+        echo "Die Deinstallation von %{name} %{version}-%{release} ist abgeschlossen."
+        echo ""
+    fi
+]]>
+                        </script>
+                    </postremoveScriptlet>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
