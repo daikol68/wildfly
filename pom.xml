@@ -11,12 +11,12 @@
 
     <parent>
         <groupId>de.daikol</groupId>
-        <artifactId>corporate-pom</artifactId>
+        <artifactId>daikol-pom</artifactId>
         <version>1.0.2</version>
     </parent>
 
     <scm>
-        <connection>scm:svn:https://svn3.sliksvn.com/davidkowol_infra/JBossWildfly/trunk</connection>
+        <connection>scm:git:https://github.com/daikol68/wildfly</connection>
     </scm>
 
     <properties>
